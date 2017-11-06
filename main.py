@@ -74,12 +74,19 @@ def build_from_op(facts, expr, op, regex):
         split = match.group().split(op)
         left = split[0]
         right = split[1]
-        facts[left] = Node(left,0)
-        facts[right] = Node(right,0)
+        if left != '' :
+            if left not in facts :
+                facts[left] = Node(left, 0)
+        if right not in facts :
+            facts[right] = Node(right, 0)
         op_name = naming_ref[op] + left + right
-        facts[op_name] = Node(op,1)
-        facts[op_name].add_node(facts[left])
+        if op_name not in facts:
+            facts[op_name] = Node(op,1)
+        if left != '' : facts[op_name].add_node(facts[left])
         facts[op_name].add_node(facts[right])
+        # print(op_name, facts[op_name].symbol)
+        # for n in facts[op_name].links:
+        #     print(n.symbol)
         expr = expr.replace(match.group(), op_name)
     return expr
     
@@ -124,7 +131,8 @@ with open(sys.argv[1]) as f :
             else:
                  process = re.sub('[\s+]', '', process)
 
-expr = "A+B|D^F+C"
+
+expr = "A+!B|D^F+C"
 
 
 expr = build_from_op(facts, expr,'+', and_regex)
@@ -132,12 +140,9 @@ expr = build_from_op(facts, expr,'^', xor_regex)
 expr = build_from_op(facts, expr,'|', or_regex)
 
 
-for val in facts.values():
-    print(val.symbol)
-print (expr)
 
 for key,val in facts.items():
-    print(val.symbol)
+    print(key, val.symbol)
     for l in val.links:
         print('\t', l.symbol)
-
+print('*************************')
