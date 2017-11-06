@@ -62,6 +62,28 @@ class Node:
 def parenthese_match(process):
     return process.count('(') == process.count(')')
 
+def build_from_op(facts, expr, op, regex):
+    naming_ref = {
+        '+' : 'AND',
+        '|' : 'OR',
+        '^' : 'XOR',
+        '!' : 'NOT'
+    }
+    matches = re.finditer(regex, expr)
+    for matchNum, match in enumerate(matches):
+        split = match.group().split(op)
+        left = split[0]
+        right = split[1]
+        facts[left] = Node(left,0)
+        facts[right] = Node(right,0)
+        op_name = naming_ref[op] + left + right
+        facts[op_name] = Node(op,1)
+        facts[op_name].add_node(facts[left])
+        facts[op_name].add_node(facts[right])
+        expr = expr.replace(match.group(), op_name)
+    return expr
+    
+    
 A = Node('A', 0)
 B = Node('B', 0)
 C = Node('C', 0)
@@ -85,12 +107,6 @@ A.change_state(False)
 B.change_state(False)
 C.change_state(True)
 
-# for node in D.links:
-#     print(node.symbol)
-
-# for node in [D,EQ1,OR1,A,AND1,B,C]:
-#     print(node.symbol,': ', [n.symbol for n in node.links if True])
-
 facts = {}
 with open(sys.argv[1]) as f :
     for line in f :
@@ -109,12 +125,19 @@ with open(sys.argv[1]) as f :
                  process = re.sub('[\s+]', '', process)
 
 expr = "A+B|D^F+C"
-split1 = expr.split('|')
-split2 = []
-split3 = []
-for splt in split1:
-    split2.append(splt.split('^'))
-    for splt in split2:
-        for splt2 in splt:
-            split3.append(splt2.split('+'))
-print(split2)
+
+
+expr = build_from_op(facts, expr,'+', and_regex)
+expr = build_from_op(facts, expr,'^', xor_regex)
+expr = build_from_op(facts, expr,'|', or_regex)
+
+
+for val in facts.values():
+    print(val.symbol)
+print (expr)
+
+for key,val in facts.items():
+    print(val.symbol)
+    for l in val.links:
+        print('\t', l.symbol)
+
