@@ -42,15 +42,17 @@ class Node:
     def resolve(self, caller):
         if self.type == 1:
             for node in self.links:
-                if node.type == 1 and node.state == None and node is not caller:                  
-                    node.resolve(self)
-                print(node.symbol)
+                if node.type != 0 and node.state == None and node is not caller:                  
+                    node.resolve(self)                                                                                                                      
             toResolve = [node for node in self.links if node is not caller]
-            # print([n.symbol for n in toResolve if True])
-            self.state = ftool.reduce(Node.operations[self.symbol], [n.state for n in toResolve if True])
+            if self.symbol == '!':
+                if 
+                toResolve = [node for node in toResolve if (node.type == 0 or caller.type == 0)]                
+                self.state =  not toResolve[0].state
+            else:
+                self.state = ftool.reduce(Node.operations[self.symbol], [n.state for n in toResolve if True])
         elif self.type == 2 and self.state == None:
             toResolve = [node for node in self.links if node is not caller]
-            # print([n.symbol for n in toResolve if True])
             for ops in toResolve : ops.resolve(self)
             if len(toResolve) == 1 :
                 self.state = toResolve[0].state
@@ -58,17 +60,22 @@ class Node:
             for node in [node for node in self.links if node is not caller]:
                 self.state = node.resolve(self)
         return self.state
-    
+
+
+#######################################################################
+
+
 def parenthese_match(process):
     return process.count('(') == process.count(')')
 
 def build_from_op(facts, expr, op, regex):
     naming_ref = {
-        '+' : 'AND',
-        '|' : 'OR',
-        '^' : 'XOR',
-        '!' : 'NOT'
+        '+' : 'And',
+        '|' : 'Or',
+        '^' : 'Xor',
+        '!' : 'Not'
     }
+    
     matches = re.finditer(regex, expr)
     for matchNum, match in enumerate(matches):
         split = match.group().split(op)
@@ -81,7 +88,7 @@ def build_from_op(facts, expr, op, regex):
             facts[right] = Node(right, 0)
         op_name = naming_ref[op] + left + right
         if op_name not in facts:
-            facts[op_name] = Node(op,1)
+            facts[op_name] = Node(op, 1)
         if left != '' : facts[op_name].add_node(facts[left])
         facts[op_name].add_node(facts[right])
         # print(op_name, facts[op_name].symbol)
@@ -89,30 +96,24 @@ def build_from_op(facts, expr, op, regex):
         #     print(n.symbol)
         expr = expr.replace(match.group(), op_name)
     return expr
-    
-    
-A = Node('A', 0)
-B = Node('B', 0)
-C = Node('C', 0)
-D = Node('D', 0)
 
-EQ1 = Node('=>', 2)
-OR1 = Node('|', 1)
-AND1 = Node('+', 1)
-XOR1 = Node('^', 1)
+def build(to_process, facts):
+    if len(to_process) == 1 and to_process not in facts:
+        facts[to_process] = Node(to_process, 0)
+    to_process = build_from_op(facts, to_process,'!', not_regex)
+    while '+' in to_process:
+        to_process = build_from_op(facts, to_process,'+', and_regex)
+    to_process = build_from_op(facts, to_process,'^', xor_regex)
+    to_process = build_from_op(facts, to_process,'|', or_regex)
+    return to_process
 
-A.add_node(OR1)
-OR1.add_node(AND1)
-B.add_node(AND1)
-C.add_node(AND1)
-
-EQ1.add_node(OR1)
-
-D.add_node(EQ1)
-
-A.change_state(False)
-B.change_state(False)
-C.change_state(True)
+def rec(s):
+    m = re.search(r'\((\S+)\)', s)
+    if m:
+        expr = rec(m.group(1))
+        s = s.replace(m.group(), expr)
+    s = build(s, facts)
+    return s
 
 facts = {}
 with open(sys.argv[1]) as f :
@@ -126,23 +127,44 @@ with open(sys.argv[1]) as f :
             rule_match = re.match(rule_regex, process)
             fact_match = re.match(fact_regex, process)
             query_match = re.match(query_regex, process)
-            if not rule_match and not fact_match and not query_match or not parenthese_match(process): 
+            if not rule_match and not fact_match and not query_match or not parenthese_match(process) or not parenthese_match(rule_match.group(1)) or not parenthese_match(rule_match.group(6)) or not parenthese_match(rule_match.group(5)): 
                 print("Wrong format :", process)
             else:
-                 process = re.sub('[\s+]', '', process)
+                left_fact = rule_match.group(1)
+                left_fact = re.sub(r'[\s]', '', left_fact)
+                left_fact = rec(left_fact)
 
+                right_fact = rule_match.group(6)
+                right_fact = re.sub(r'[\s]', '', right_fact)
+                right_fact = rec(right_fact)
+ 
+                implie = rule_match.group(5)
+                implie_name = "IMP" + left_fact + right_fact
+                if implie_name not in facts:
+                    facts[implie_name] = Node('=>', 2)
+                facts[implie_name].add_node(facts[left_fact])
+                facts[implie_name].add_node(facts[right_fact])
 
-expr = "A+!B|D^F+C"
+# expr = build(expr, facts)
 
-
-expr = build_from_op(facts, expr,'+', and_regex)
-expr = build_from_op(facts, expr,'^', xor_regex)
-expr = build_from_op(facts, expr,'|', or_regex)
-
-
-
+print('*************************')
 for key,val in facts.items():
     print(key, val.symbol)
     for l in val.links:
         print('\t', l.symbol)
 print('*************************')
+
+facts['A'].change_state(True)
+facts['B'].change_state(True) 
+facts['C'].change_state(False)
+facts['D'].change_state(False)
+facts['E'].change_state(True)
+facts['F'].change_state(True)
+facts['G'].change_state(True)
+
+# print(facts['Z'].resolve(facts['Z']))
+print(facts['X'].symbol,":",facts['X'].resolve(facts['X']))
+print(facts['Z'].symbol,":",facts['Z'].resolve(facts['Z']))
+#print(facts['Y'].resolve(facts['Y']))
+
+for key,val in facts.items():print(key, val.state)
