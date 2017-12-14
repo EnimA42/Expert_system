@@ -6,7 +6,9 @@ import re
 from regex import *
 
 class Node:
-    """Classe that defines a node. Could be a fact or an operation"""
+    """
+    Classe that defines a node. Could be a fact or an operation
+    """
 
     operations = {
         '+' : op.and_,
@@ -30,21 +32,21 @@ class Node:
         if node.__class__.__name__ == self.__class__.__name__ and node not in self.links:
             self.links.append(node)
             if is_on_right == True :
-                print("Double add between ",self.symbol, node.symbol)
                 node.links.append(self)
         else:
             print("Linking error. {} could not be linked with {}".format(self, node))
 
     def change_state(self, state):
+        
         if state.__class__.__name__ == 'bool': 
             self.state = state
         else:
             print("State assignment error")
     
     def resolve(self, caller):
-        print("in", self.symbol)
-        for n in self.links:
-            print(n.symbol)
+        """
+        method recursively called to find the node status
+        """
         if self.state != None : return self.state
 
         if self.type == 0:
@@ -56,7 +58,7 @@ class Node:
                 for node in toResolve:
                     state = node.resolve(self)
                     if self.state != None and state != self.state:
-                        print (self.symbol, ": Error !")
+                        print (self.symbol, ": Too Ambigious !")
                         exit(0)
                     self.state = state
 
@@ -68,13 +70,18 @@ class Node:
             else:
                 state = None
                 for node in toResolve:
+                    if node.type == 0:
+                        state = node.resolve(self)
+                        self.state = not state
+                if self.state != None :
+                    return self.state
+                for node in toResolve:
                     state = node.resolve(self)
                     if self.state != None and state != self.state:
-                        print (self.symbol, ": Error !")                        
+                        print (self.symbol, ": Error !")                     
                         exit(0)
-                    self.state = state
-                    return not self.state
-                
+                    self.state = not state
+
         if self.type == 2:
             toResolve = [node for node in self.links if node is not caller]
             state = None
@@ -85,25 +92,6 @@ class Node:
                     exit(0)
                 self.state = state       
         return self.state
-
-    def old(self,caller):
-        if self.type == 1:
-            for node in self.links:
-                if node.type != 0 and node.state == None and node is not caller:                  
-                    node.resolve(self)                                                                                                                      
-            toResolve = [node for node in self.links if node is not caller]
-            if self.symbol == '!':
-                self.state = not toResolve[0].state
-            else:
-                self.state = ftool.reduce(Node.operations[self.symbol], [n.state for n in toResolve if True])
-        elif self.type == 2 and self.state == None:
-            toResolve = [node for node in self.links if node is not caller]
-            for ops in toResolve : ops.resolve(self)
-            if len(toResolve) == 1 :
-                self.state = toResolve[0].state
-        elif self.state == None:
-            for node in [node for node in self.links if node is not caller]:
-                self.state = node.resolve(self)
 #######################################################################
 
 
@@ -111,6 +99,9 @@ def parenthese_match(process):
     return process.count('(') == process.count(')')
 
 def build_from_op(facts, expr, op, regex, is_on_right):
+    """
+    building a graph according to the operator
+    """
     naming_ref = {
         '+' : 'And',
         '|' : 'Or',
@@ -137,6 +128,9 @@ def build_from_op(facts, expr, op, regex, is_on_right):
     return expr
 
 def build(to_process, facts, is_on_right):
+    """
+     building a graph according to the fact
+     """
     if len(to_process) == 1 and to_process not in facts:
         facts[to_process] = Node(to_process, 0)
     to_process = build_from_op(facts, to_process,'!', not_regex, is_on_right)
@@ -145,34 +139,62 @@ def build(to_process, facts, is_on_right):
     to_process = build_from_op(facts, to_process,'^', xor_regex, is_on_right)
     to_process = build_from_op(facts, to_process,'|', or_regex, is_on_right)
     return to_process
-
 def rec(s, is_on_right):
-    m = re.search(r'\((\S+)\)', s)
-    if m:
-        expr = rec(m.group(1), is_on_right)
-        s = s.replace(m.group(), expr)
+    """
+    processing parentheses (WIP)
+    """
+    stack=[]
+    cnt = 0
+    new = ""
+    for l in s:
+        if cnt > 0 :
+            stack.append(l)
+        if l == '(':
+            cnt += 1
+        if l == ')':
+            cnt -= 1
+        if len(stack) > 0 and cnt == 0:
+            joined = ''.join(stack[:-1])
+            print("j :", joined)
+            new = rec(joined, is_on_right)
+            print("n :", new)
+            s = s.replace('(' + joined, new)
+            print('s',s)
+    if len(new):
+        s = build(s, facts, is_on_right)
+        return s
     s = build(s, facts, is_on_right)
     return s
 
 facts = {}
+
+# Parsing and graph building
 with open(sys.argv[1]) as f :
     for line in f :
+        print("je suis la :", line)
+        # comments processing
         com = line.find('#')
         if com > 0 :
             process = line[:com]
         elif com < 0 :
             process = line.rstrip()
+        # using regex to parse the different part of a file
         if com and process != '':
+            print("je suis ici")
             rule_match = re.match(rule_regex, process)
+            print("je suis la")
             fact_match = re.match(fact_regex, process)
+            print("je suis par la")
             query_match = re.match(query_regex, process)
             if not rule_match and not fact_match and not query_match or not parenthese_match(process) or not parenthese_match(rule_match.group(1)) or not parenthese_match(rule_match.group(6)) or not parenthese_match(rule_match.group(5)): 
                 print("Wrong format :", process)
             else:
+                # build 3 differents graphs for each parts of a fact
+                print("je rentre meme la")
                 left_fact = rule_match.group(1)
                 left_fact = re.sub(r'[\s]', '', left_fact)
                 left_fact = rec(left_fact, False)
-
+                
                 right_fact = rule_match.group(6)
                 right_fact = re.sub(r'[\s]', '', right_fact)
                 right_fact = rec(right_fact, True)
@@ -181,7 +203,7 @@ with open(sys.argv[1]) as f :
                 implie_name = "IMP" + left_fact + right_fact
                 if implie_name not in facts:
                     facts[implie_name] = Node('=>', 2)
-
+                # linking the 3 graphs
                 facts[implie_name].add_node(facts[left_fact])
                 facts[implie_name].add_node(facts[right_fact], True)
 
@@ -209,4 +231,3 @@ print("Looking for", facts['Z'].symbol," :",facts['Z'].resolve(facts['Z']))
 print("++++++++++++++++++++")
 
 for key,val in facts.items():print(key, val.state)
-for l in facts["NotZ"].links: print (l.symbol)
